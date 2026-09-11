@@ -9,10 +9,12 @@ test.beforeEach(async ({ page }) => {
 });
 
 // This test talks to the real OpenRouter model (a reasoning model), which
-// regularly takes 30-90s to answer, so it needs a much longer timeout than
-// the rest of the suite.
+// regularly takes 30-90s to answer (sometimes much longer), so it needs a
+// much longer timeout than the rest of the suite. The backend itself gives
+// up on the AI call after 200s (app/ai.py), so this test's patience must
+// exceed that.
 test("chatting with the AI can create a card and refresh the board", async ({ page }) => {
-  test.setTimeout(200_000);
+  test.setTimeout(230_000);
 
   const title = `Tarjeta e2e chat ${Date.now()}`;
 
@@ -24,7 +26,7 @@ test("chatting with the AI can create a card and refresh the board", async ({ pa
   await page.getByRole("button", { name: "Enviar" }).click();
 
   await expect(page.getByText("IA escribiendo…")).toBeVisible();
-  await expect(page.getByText("IA escribiendo…")).not.toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText("IA escribiendo…")).not.toBeVisible({ timeout: 210_000 });
 
   await expect(page.getByText(title, { exact: true })).toBeVisible();
 

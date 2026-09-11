@@ -3,6 +3,11 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 class Card(BaseModel):
     id: str
     title: str

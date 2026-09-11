@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app import auth
 from app.main import app
 
 
@@ -38,3 +39,17 @@ def test_logout_invalidates_session():
 
     me_response = client.get("/api/me")
     assert me_response.status_code == 401
+
+
+def test_expired_sessions_are_evicted_and_rejected():
+    # Regression test: sessions from a client that never logs out must not live
+    # forever in memory — they should expire after SESSION_TTL_SECONDS.
+    client = TestClient(app)
+    login_response = client.post("/api/login", json={"username": "user", "password": "password"})
+    session_id = login_response.cookies["session_id"]
+    auth._sessions[session_id] -= auth.SESSION_TTL_SECONDS + 1
+
+    response = client.get("/api/me")
+
+    assert response.status_code == 401
+    assert session_id not in auth._sessions

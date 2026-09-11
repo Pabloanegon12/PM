@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 
@@ -73,12 +74,21 @@ async def _post(payload: dict, timeout: float = 60) -> dict:
 
     try:
         async with httpx2.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                OPENROUTER_URL,
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": MODEL, **payload},
+            # httpx2's `timeout` only bounds the gap between individual reads, not the
+            # total request duration: a response that trickles in periodically (as
+            # OpenRouter does while a reasoning model "thinks") never triggers it and
+            # can hang indefinitely. wait_for() enforces an actual overall deadline.
+            response = await asyncio.wait_for(
+                client.post(
+                    OPENROUTER_URL,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={"model": MODEL, **payload},
+                ),
+                timeout=timeout,
             )
         response.raise_for_status()
+    except TimeoutError as error:
+        raise AIError(f"OpenRouter no respondió en {timeout}s") from error
     except httpx2.HTTPError as error:
         raise AIError(f"Fallo al llamar a OpenRouter: {error}") from error
 
@@ -117,7 +127,7 @@ async def chat(board: Board, history: list[ChatMessage], user_message: str) -> d
                 },
             },
         },
-        timeout=120,
+        timeout=200,
     )
 
     content = data["choices"][0]["message"]["content"]

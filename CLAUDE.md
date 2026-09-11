@@ -35,6 +35,42 @@ Ya se ha desarrollado un MVP funcional del frontend y se encuentra en `frontend/
 
 Es una demo exclusivamente de frontend.
 
+**Nota:** este era el punto de partida original. El MVP completo (backend, base de datos, Docker, IA) ya está implementado; ver "Estado actual" más abajo y `docs/PLAN.md` para el detalle de cada parte.
+
+## Estado actual
+
+Las 10 partes de `docs/PLAN.md` están completas: login, tablero Kanban persistente en SQLite, chat de IA (OpenRouter) capaz de crear/editar/mover tarjetas, todo empaquetado en un único contenedor Docker (Next.js exportado como estático + FastAPI). Para el detalle de arquitectura de cada parte, ver el `CLAUDE.md` de cada directorio: [`backend/CLAUDE.md`](backend/CLAUDE.md), [`frontend/CLAUDE.md`](frontend/CLAUDE.md), [`scripts/CLAUDE.md`](scripts/CLAUDE.md).
+
+## Comandos
+
+**Arrancar/parar la app completa (Docker):**
+```
+scripts/start.sh   # o scripts/start.ps1 en Windows
+scripts/stop.sh    # o scripts/stop.ps1 en Windows
+```
+Requiere Docker en marcha y `.env` en la raíz con `OPENROUTER_API_KEY`. Sirve en `http://localhost:8000`.
+
+**Backend (FastAPI) en local, sin Docker:**
+```
+cd backend
+uv sync
+uv run uvicorn app.main:app --reload
+```
+Tests: `cd backend && uv run pytest` (un solo test: `uv run pytest tests/test_board.py::nombre_del_test`).
+
+**Frontend (Next.js) en local, sin Docker:**
+```
+cd frontend
+npm install
+npm run dev
+```
+Tests unitarios: `npm test` (un solo archivo: `npm test -- src/components/BoardApp.test.tsx`). Lint: `npm run lint`.
+Tests e2e (Playwright, requieren el contenedor Docker real en `localhost:8000`): `npm run test:e2e`.
+
+## Arquitectura
+
+Contenedor único: `Dockerfile` en la raíz hace build multi-stage — Node compila el frontend (`next build`, export estático) y una imagen Python/`uv` sirve ese estático junto con la API FastAPI, ambos en el puerto 8000. El backend monta el build del frontend en `/`; todas las rutas de API van bajo `/api/*`. La base de datos SQLite vive en `./data/pm.db` (montada como volumen para persistir entre reinicios del contenedor). Para la estructura interna de cada mitad (rutas, componentes, dónde vive cada cosa) ver `backend/CLAUDE.md` y `frontend/CLAUDE.md`.
+
 ## Esquema de colores
 
 - **Amarillo de acento:** `#ecad0a` — líneas de acento y elementos destacados.

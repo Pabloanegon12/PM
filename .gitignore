@@ -5,3 +5,5 @@ backend/.venv
 backend/*.db
 backend/data/
 /data/
+backend/pm_backend.egg-info/
+cookies.txt

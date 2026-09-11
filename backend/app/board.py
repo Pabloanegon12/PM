@@ -81,6 +81,12 @@ def _to_int_id(value: str) -> int:
 
 
 def ensure_default_user(connection: sqlite3.Connection) -> int:
+    row = connection.execute(
+        "SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)
+    ).fetchone()
+    if row is not None:
+        return row["id"]
+
     connection.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (DEFAULT_USERNAME,))
     connection.commit()
     row = connection.execute(
@@ -238,6 +244,44 @@ def move_card(
         _set_column_order(connection, from_column_id, [row["id"] for row in source_rows])
 
     connection.commit()
+
+
+def validate_ai_operation(current_board: Board, operation: AIOperation) -> None:
+    """Check required fields and that referenced ids exist in `current_board`.
+
+    Called for every operation in a batch before any of them is applied, so an
+    invalid operation later in the batch can't leave earlier ones committed.
+    """
+    column_ids = {column.id for column in current_board.columns}
+    card_ids = set(current_board.cards)
+
+    if operation.op == "create_card":
+        if operation.columnId is None or operation.title is None:
+            raise ValueError("create_card requiere columnId y title")
+        if operation.columnId not in column_ids:
+            raise NotFoundError("Columna no encontrada")
+    elif operation.op == "update_card":
+        if operation.cardId is None or operation.title is None:
+            raise ValueError("update_card requiere cardId y title")
+        if operation.cardId not in card_ids:
+            raise NotFoundError("Tarjeta no encontrada")
+    elif operation.op == "delete_card":
+        if operation.cardId is None:
+            raise ValueError("delete_card requiere cardId")
+        if operation.cardId not in card_ids:
+            raise NotFoundError("Tarjeta no encontrada")
+    elif operation.op == "rename_column":
+        if operation.columnId is None or operation.name is None:
+            raise ValueError("rename_column requiere columnId y name")
+        if operation.columnId not in column_ids:
+            raise NotFoundError("Columna no encontrada")
+    elif operation.op == "move_card":
+        if operation.cardId is None or operation.toColumnId is None or operation.toIndex is None:
+            raise ValueError("move_card requiere cardId, toColumnId y toIndex")
+        if operation.cardId not in card_ids:
+            raise NotFoundError("Tarjeta no encontrada")
+        if operation.toColumnId not in column_ids:
+            raise NotFoundError("Columna no encontrada")
 
 
 def apply_ai_operation(connection: sqlite3.Connection, board_id: int, operation: AIOperation) -> None:

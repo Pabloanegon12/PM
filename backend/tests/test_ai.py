@@ -21,7 +21,10 @@ class _FakeAsyncClient:
         return False
 
     async def post(self, url, **kwargs):
-        return self._post_fn(url, **kwargs)
+        result = self._post_fn(url, **kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
 
 
 def _mock_async_client(monkeypatch: pytest.MonkeyPatch, post_fn):
@@ -77,6 +80,23 @@ def test_ask_raises_on_network_error(monkeypatch: pytest.MonkeyPatch):
 
     with pytest.raises(ai.AIError):
         asyncio.run(ai.ask("2+2"))
+
+
+def test_post_raises_when_response_trickles_past_the_total_timeout(monkeypatch: pytest.MonkeyPatch):
+    # Regression test: httpx2's `timeout` only bounds the gap between reads, not the
+    # total request duration, so a response that keeps the connection alive without
+    # ever completing (as OpenRouter does while a reasoning model "thinks") would
+    # hang forever. `ai._post` must enforce a real overall deadline.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    async def fake_post(url, **kwargs):
+        await asyncio.sleep(10)
+        return httpx2.Response(200, json={}, request=httpx2.Request("POST", url))
+
+    _mock_async_client(monkeypatch, fake_post)
+
+    with pytest.raises(ai.AIError):
+        asyncio.run(ai._post({"messages": []}, timeout=0.05))
 
 
 def test_ai_test_endpoint_requires_session(tmp_path, monkeypatch: pytest.MonkeyPatch):
@@ -267,6 +287,77 @@ def test_ai_chat_endpoint_rejects_invalid_operation_with_cause(tmp_path, monkeyp
 
     assert response.status_code == 422
     assert "no encontrada" in response.json()["detail"].lower()
+
+
+def test_ai_chat_endpoint_returns_422_on_malformed_ai_operation(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    # Regression test: a structured-output response that doesn't match AIOperation's
+    # shape (the free model doesn't guarantee 100% schema adherence) must surface as
+    # a clean 422, not an unhandled 500.
+    monkeypatch.setenv("PM_DB_PATH", str(tmp_path / "chat6.db"))
+
+    async def fake_chat(board, history, message):
+        return {"message": "ok", "operations": [{"op": "not_a_real_operation"}]}
+
+    monkeypatch.setattr(ai, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        client.post("/api/login", json={"username": "user", "password": "password"})
+        response = client.post("/api/ai/chat", json={"message": "hola"})
+
+    assert response.status_code == 422
+
+
+def test_ai_chat_endpoint_does_not_partially_apply_an_invalid_batch(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    # Regression test: if the AI proposes several operations and a later one is
+    # invalid, none of them should be persisted — previously each operation
+    # committed its own transaction, so the first one stuck even though the whole
+    # request reported an error.
+    monkeypatch.setenv("PM_DB_PATH", str(tmp_path / "chat7.db"))
+
+    async def fake_chat(board, history, message):
+        column_id = board.columns[0].id
+        return {
+            "message": "Dos operaciones",
+            "operations": [
+                {
+                    "op": "create_card",
+                    "columnId": column_id,
+                    "title": "No deberia persistir",
+                    "details": "",
+                    "cardId": None,
+                    "name": None,
+                    "toColumnId": None,
+                    "toIndex": None,
+                },
+                {
+                    "op": "delete_card",
+                    "cardId": "9999",
+                    "columnId": None,
+                    "title": None,
+                    "details": None,
+                    "name": None,
+                    "toColumnId": None,
+                    "toIndex": None,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(ai, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        client.post("/api/login", json={"username": "user", "password": "password"})
+        response = client.post("/api/ai/chat", json={"message": "dos cambios, uno invalido"})
+        assert response.status_code == 422
+
+        board_response = client.get("/api/board")
+        assert not any(
+            card["title"] == "No deberia persistir"
+            for card in board_response.json()["cards"].values()
+        )
 
 
 def test_ai_chat_endpoint_persists_conversation_history_per_session(
