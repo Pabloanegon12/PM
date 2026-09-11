@@ -1,0 +1,43 @@
+{
+  "database": "sqlite",
+  "tables": {
+    "users": {
+      "fields": {
+        "id": { "type": "INTEGER", "primary_key": true },
+        "username": { "type": "TEXT", "unique": true, "nullable": false },
+        "password_hash": { "type": "TEXT", "nullable": true },
+        "created_at": { "type": "TEXT", "nullable": false, "default": "CURRENT_TIMESTAMP" }
+      }
+    },
+    "boards": {
+      "fields": {
+        "id": { "type": "INTEGER", "primary_key": true },
+        "user_id": { "type": "INTEGER", "nullable": false, "foreign_key": "users.id" },
+        "created_at": { "type": "TEXT", "nullable": false, "default": "CURRENT_TIMESTAMP" }
+      },
+      "constraints": ["UNIQUE(user_id)"]
+    },
+    "columns": {
+      "fields": {
+        "id": { "type": "INTEGER", "primary_key": true },
+        "board_id": { "type": "INTEGER", "nullable": false, "foreign_key": "boards.id" },
+        "name": { "type": "TEXT", "nullable": false },
+        "position": { "type": "INTEGER", "nullable": false }
+      }
+    },
+    "cards": {
+      "fields": {
+        "id": { "type": "INTEGER", "primary_key": true },
+        "column_id": { "type": "INTEGER", "nullable": false, "foreign_key": "columns.id" },
+        "title": { "type": "TEXT", "nullable": false },
+        "details": { "type": "TEXT", "nullable": false, "default": "" },
+        "position": { "type": "INTEGER", "nullable": false }
+      }
+    }
+  },
+  "relationships": [
+    { "from": "boards.user_id", "to": "users.id", "cardinality": "1:1 en el MVP (UNIQUE en user_id), preparado para 1:N en el futuro quitando esa restricción", "on_delete": "CASCADE" },
+    { "from": "columns.board_id", "to": "boards.id", "cardinality": "1:N", "on_delete": "CASCADE" },
+    { "from": "cards.column_id", "to": "columns.id", "cardinality": "1:N", "on_delete": "CASCADE" }
+  ]
+}

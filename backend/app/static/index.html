@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>PM</title>
+  </head>
+  <body>
+    <h1>Hello World</h1>
+    <p>Estado de la API: <span id="status">cargando...</span></p>
+    <script>
+      fetch("/api/health")
+        .then((response) => response.json())
+        .then((data) => {
+          document.getElementById("status").textContent = data.status;
+        })
+        .catch(() => {
+          document.getElementById("status").textContent = "error";
+        });
+    </script>
+  </body>
+</html>
